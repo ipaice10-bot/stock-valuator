@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Optional
 from enum import Enum
 
+# Version: 1.1 - Added dividend support
+
 
 class Grade(Enum):
     A_PLUS = "A+"
