@@ -25,6 +25,7 @@ class StockData:
     growth_rate_terminal: float
     discount_rate: float
     net_debt: float = 0
+    annual_dividend: float = 0  # Annual dividend per share
 
 
 @dataclass
@@ -37,6 +38,8 @@ class ValuationResult:
     market_cap: float
     investment_grade: Grade
     grade_score: float
+    dividend_yield: float
+    payout_ratio: float
 
 
 class StockValuator:
@@ -102,7 +105,20 @@ class StockValuator:
         
         return max(0, value_per_share)
     
-    def calculate_grade(self, pe: float, ps: float, dcf_upside: float) -> tuple[Grade, float]:
+    def calculate_dividend_yield(self, data: StockData) -> float:
+        """Calculate dividend yield as percentage."""
+        if data.current_price <= 0:
+            return 0
+        return (data.annual_dividend / data.current_price) * 100
+    
+    def calculate_payout_ratio(self, data: StockData) -> float:
+        """Calculate dividend payout ratio (dividends / earnings)."""
+        if data.net_income <= 0 or data.shares_outstanding <= 0:
+            return 0
+        eps = data.net_income / data.shares_outstanding
+        if eps <= 0:
+            return 0
+        return (data.annual_dividend / eps) * 100
         """Calculate investment grade based on multiple metrics."""
         
         # P/E scoring (lower is better)
@@ -168,6 +184,8 @@ class StockValuator:
         pe = self.calculate_pe(data)
         ps = self.calculate_ps(data)
         dcf_value = self.calculate_dcf(data)
+        div_yield = self.calculate_dividend_yield(data)
+        payout = self.calculate_payout_ratio(data)
         
         dcf_upside = (dcf_value - data.current_price) / data.current_price if data.current_price > 0 else 0
         
@@ -180,7 +198,9 @@ class StockValuator:
             dcf_upside=dcf_upside,
             market_cap=market_cap,
             investment_grade=grade,
-            grade_score=score
+            grade_score=score,
+            dividend_yield=div_yield,
+            payout_ratio=payout
         )
 
 
@@ -220,6 +240,9 @@ with col1:
     revenue = st.number_input("Revenue ($)", min_value=0.0, value=391e9, step=1e9, format="%.0f")
     free_cash_flow = st.number_input("Free Cash Flow ($)", min_value=0.0, value=99.8e9, step=1e9, format="%.0f")
     net_debt = st.number_input("Net Debt ($) - negative = net cash", value=0.0, step=1e9, format="%.0f")
+    
+    st.subheader("💵 Dividend Data")
+    annual_dividend = st.number_input("Annual Dividend per Share ($)", min_value=0.0, value=0.96, step=0.01, format="%.2f")
 
 with col2:
     st.subheader("🔮 DCF Assumptions")
@@ -253,7 +276,8 @@ if calculate:
             growth_rate_5y=growth_5y,
             growth_rate_terminal=growth_terminal,
             discount_rate=discount_rate,
-            net_debt=net_debt
+            net_debt=net_debt,
+            annual_dividend=annual_dividend
         )
         
         # Run valuation
@@ -295,6 +319,17 @@ if calculate:
             upside_color = "normal" if result.dcf_upside >= 0 else "inverse"
             st.metric("DCF Upside", f"{result.dcf_upside*100:.1f}%", delta_color=upside_color)
         
+        # Dividend metrics row
+        if result.dividend_yield > 0:
+            st.subheader("💵 Dividend Metrics")
+            d1, d2, d3 = st.columns(3)
+            with d1:
+                st.metric("Dividend Yield", f"{result.dividend_yield:.2f}%")
+            with d2:
+                st.metric("Annual Dividend", f"${annual_dividend:.2f}")
+            with d3:
+                st.metric("Payout Ratio", f"{result.payout_ratio:.1f}%")
+        
         # Detailed breakdown
         st.subheader("📊 Detailed Metrics")
         
@@ -302,6 +337,7 @@ if calculate:
         
         with det_col1:
             st.markdown("**Input Summary**")
+            dividend_row = f"| Annual Dividend | ${annual_dividend:.2f} |\n" if annual_dividend > 0 else ""
             st.markdown(f"""
             | Metric | Value |
             |--------|-------|
@@ -311,7 +347,7 @@ if calculate:
             | Revenue | {format_currency(revenue)} |
             | Free Cash Flow | {format_currency(free_cash_flow)} |
             | Net Debt | {format_currency(net_debt)} |
-            """)
+            {dividend_row}""")
         
         with det_col2:
             st.markdown("**DCF Assumptions**")
@@ -343,6 +379,22 @@ if calculate:
             interpretations.append("• **P/S**: High price-to-sales (growth premium)")
         else:
             interpretations.append("• **P/S**: Moderate price-to-sales")
+        
+        # Dividend interpretation
+        if result.dividend_yield > 0:
+            if result.dividend_yield >= 4:
+                interpretations.append(f"• **Dividend**: High yield stock ({result.dividend_yield:.2f}%)")
+            elif result.dividend_yield >= 2:
+                interpretations.append(f"• **Dividend**: Moderate yield ({result.dividend_yield:.2f}%)")
+            else:
+                interpretations.append(f"• **Dividend**: Low yield ({result.dividend_yield:.2f}%)")
+            
+            if result.payout_ratio > 80:
+                interpretations.append("• **Payout**: High payout ratio (may be unsustainable)")
+            elif result.payout_ratio > 50:
+                interpretations.append("• **Payout**: Moderate payout ratio")
+            else:
+                interpretations.append("• **Payout**: Conservative payout ratio (room to grow)")
         
         if result.dcf_upside > 0.30:
             interpretations.append("• **DCF**: Significantly undervalued (30%+ upside)")
@@ -398,6 +450,7 @@ else:
     | Net Income | $97,000,000,000 |
     | Revenue | $391,000,000,000 |
     | Free Cash Flow | $99,800,000,000 |
+    | Annual Dividend | $0.96 |
     | 5-Year Growth | 8% |
     | Terminal Growth | 2.5% |
     | Discount Rate | 9% |
