@@ -121,6 +121,8 @@ class StockValuator:
         if eps <= 0:
             return 0
         return (data.annual_dividend / eps) * 100
+
+    def calculate_grade(self, pe: float, ps: float, dcf_upside: float) -> tuple[Grade, float]:
         """Calculate investment grade based on multiple metrics."""
         
         # P/E scoring (lower is better)
